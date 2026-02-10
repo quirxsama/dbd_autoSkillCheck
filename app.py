@@ -5,6 +5,7 @@ import gradio as gr
 
 from dbd.AI_model import AI_model
 from dbd.utils.directkeys import PressKey, ReleaseKey, SPACE
+from dbd.utils.humanizer import humanized_press
 from dbd.utils.monitoring_mss import Monitoring_mss
 
 # Optional: BetterCam (Windows only)
@@ -78,7 +79,7 @@ def apply_fps_preset(preset_name):
     return gr.skip()
 
 
-def monitor(ai_model_path, device, monitoring_str, monitor_id, hit_ante, nb_cpu_threads):
+def monitor(ai_model_path, device, monitoring_str, monitor_id, hit_ante, nb_cpu_threads, use_hesitation):
     if ai_model_path is None or not os.path.exists(ai_model_path):
         raise gr.Error("Invalid AI model file", duration=0)
 
@@ -135,13 +136,14 @@ def monitor(ai_model_path, device, monitoring_str, monitor_id, hit_ante, nb_cpu_
                 if pred == 2 and hit_ante > 0:
                     sleep(hit_ante * 0.001)
 
-                PressKey(SPACE)
-                sleep(0.005)
-                ReleaseKey(SPACE)
+                # Humanized key press
+                cooldown = humanized_press(
+                    SPACE, PressKey, ReleaseKey, use_hesitation=use_hesitation
+                )
 
                 yield gr.skip(), frame_np, probs
 
-                sleep(0.5)  # avoid hitting the same skill check multiple times
+                sleep(cooldown)  # humanized cooldown
                 t0 = time()
                 nb_frames = 0
                 continue
@@ -311,6 +313,13 @@ if __name__ == "__main__":
                         info="Increase to improve AI FPS, decrease to reduce CPU usage. "
                              "Adjust based on your hardware."
                     )
+                    
+                    use_hesitation = gr.Checkbox(
+                        label="Human-like Hesitation (Recommended)",
+                        value=True,
+                        info="Adds random micro-delays (~7% chance). Increases safety against anti-cheat, "
+                             "but creates a small chance of hitting 'Good' instead of 'Great'."
+                    )
 
                 # Controls
                 with gr.Column():
@@ -327,7 +336,7 @@ if __name__ == "__main__":
         # Event handlers
         monitoring = run_button.click(
             fn=monitor, 
-            inputs=[ai_model_path, device, monitoring_str, monitor_id, hit_ante, cpu_stress],
+            inputs=[ai_model_path, device, monitoring_str, monitor_id, hit_ante, cpu_stress, use_hesitation],
             outputs=[fps, image_visu, probs]
         )
 

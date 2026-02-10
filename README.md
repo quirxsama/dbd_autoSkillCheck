@@ -206,6 +206,28 @@ The ante-frontier delay determines how early or late the AI presses the space ba
 
 > **💡 Tip**: Start with the preset matching your game FPS. If you're hitting "good" instead of "great", try decreasing the value (more negative). If you're hitting too early and failing, increase the value.
 
+# Human-Like Input Simulation
+
+To avoid detection by anti-cheat systems (like EAC), the tool now includes a sophisticated **Humanizer** module that makes key presses look natural and unique to every user.
+
+### 🛡️ Per-Installation Fingerprinting
+
+Every installation generates a unique `humanizer_fingerprint.json` file on the first run. This file contains randomized timing parameters (within human limits) specific to **your** setup.
+
+- **Result:** Your bot's timing pattern is mathematically distinct from every other user's.
+- **Benefit:** Anti-cheat systems cannot cluster users based on identical timing signatures.
+
+### 🎭 Natural Variance & Hesitation
+
+Instead of mechanical, fixed delays, the Humanizer uses:
+
+- **Ex-Gaussian Distribution:** Matches scientific models of human reaction time (skewed distribution).
+- **Micro-Hesitations:** Optional ~7% chance to delay the press slightly (15-50ms), mimicking real human hesitation.
+- **Fatigue System:** Reaction times gradually slow down (up to 15%) over long sessions.
+- **Anti-Repeat Jitter:** Prevents two consecutive key presses from having the exact same duration.
+
+> **Note:** "Human-like Hesitation" is enabled by default for maximum safety. It may rarely cause a "Good" skill check instead of "Great", but it significantly reduces the risk of detection. You can disable it in the Web UI or TUI if you prefer mechanical precision.
+
 # Linux Setup Guide
 
 ## X11 Users

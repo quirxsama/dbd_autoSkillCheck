@@ -22,6 +22,7 @@ from rich import box
 
 from dbd.AI_model import AI_model
 from dbd.utils.directkeys import PressKey, ReleaseKey, SPACE
+from dbd.utils.humanizer import Humanizer
 from dbd.utils.monitoring_mss import Monitoring_mss
 
 # Optional imports
@@ -174,6 +175,9 @@ class DBDAutoSkillCheck:
         self.monitor_id = 0
         self.hit_ante = 0
         self.cpu_threads = 4
+        self.cpu_threads = 4
+        self.humanizer = Humanizer()
+        self.use_hesitation = True  # Default: active for realism
 
         # On Wayland, trigger input consent dialog early
         self._consent_thread = None
@@ -251,6 +255,8 @@ class DBDAutoSkillCheck:
             self.hit_ante = config["hit_ante"]
         if "cpu_threads" in config:
             self.cpu_threads = config["cpu_threads"]
+        if "use_hesitation" in config:
+            self.use_hesitation = config["use_hesitation"]
         if "model_index" in config:
             models = self.get_available_models()
             idx = config["model_index"]
@@ -355,6 +361,14 @@ class DBDAutoSkillCheck:
         thread_choice = IntPrompt.ask("[yellow]Select[/yellow]", default=2)
         self.cpu_threads = {1: 2, 2: 4, 3: 6, 4: 8}.get(thread_choice, 4)
         console.print(f"[green]> Threads: {self.cpu_threads}[/green]\n")
+
+        # --- Humanizer Hesitation ---
+        console.print("[bold cyan]Human-like Hesitation:[/bold cyan]")
+        console.print("[dim]Adds random micro-delays (~7% chance) to mimic human reaction.[/dim]")
+        console.print("[dim]Increases realism but introduces a slight risk of hitting 'Good' instead of 'Great'.[/dim]")
+        self.use_hesitation = Confirm.ask("[yellow]Enable hesitation?[/yellow] (Recommended for anti-cheat)", default=True)
+        status = "Active" if self.use_hesitation else "Disabled"
+        console.print(f"[green]> Hesitation: {status}[/green]\n")
 
         return True
 
@@ -501,6 +515,16 @@ class DBDAutoSkillCheck:
         config["cpu_threads"] = {1: 2, 2: 4, 3: 6, 4: 8}.get(thread_choice, 4)
         console.print(f"[green]> Threads: {config['cpu_threads']}[/green]\n")
 
+        # --- Humanizer Hesitation ---
+        current_hes = existing.get("use_hesitation", True) if existing else True
+        console.print("[bold cyan]Default Hesitation Setting:[/bold cyan]")
+        console.print(f"  [dim]Current: {'Active' if current_hes else 'Disabled'}[/dim]")
+        config["use_hesitation"] = Confirm.ask(
+            "[yellow]Enable hesitation by default?[/yellow]",
+            default=current_hes
+        )
+        console.print(f"[green]> Hesitation: {'Active' if config['use_hesitation'] else 'Disabled'}[/green]\n")
+
         # --- Summary & Save ---
         console.print(Panel("[bold]Default Settings Summary[/bold]", box=box.ROUNDED))
 
@@ -512,6 +536,7 @@ class DBDAutoSkillCheck:
         summary.add_row("Capture Method", config["monitoring_type"])
         summary.add_row("Ante-frontier Delay", f"{config['hit_ante']}ms")
         summary.add_row("CPU Threads", str(config["cpu_threads"]))
+        summary.add_row("Hesitation", "Active" if config.get("use_hesitation", True) else "Disabled")
         console.print(summary)
         console.print()
 
@@ -617,11 +642,12 @@ class DBDAutoSkillCheck:
             model_name = os.path.basename(self.model_path)
 
             console.print(f"[dim]Quick start mode (-s)[/dim]")
-            console.print(f"[dim]  Model   : {model_name}[/dim]")
-            console.print(f"[dim]  Device  : {'GPU' if self.use_gpu else 'CPU'}[/dim]")
-            console.print(f"[dim]  Capture : {self.monitoring_type}[/dim]")
-            console.print(f"[dim]  Delay   : {self.hit_ante}ms[/dim]")
-            console.print(f"[dim]  Threads : {self.cpu_threads}[/dim]")
+            console.print(f"[dim]  Model     : {model_name}[/dim]")
+            console.print(f"[dim]  Device    : {'GPU' if self.use_gpu else 'CPU'}[/dim]")
+            console.print(f"[dim]  Capture   : {self.monitoring_type}[/dim]")
+            console.print(f"[dim]  Delay     : {self.hit_ante}ms[/dim]")
+            console.print(f"[dim]  Threads   : {self.cpu_threads}[/dim]")
+            console.print(f"[dim]  Humanizer : {'Hesitation ON' if self.use_hesitation else 'Hesitation OFF'}[/dim]")
             console.print()
         else:
             if not self.select_settings():
@@ -689,15 +715,16 @@ class DBDAutoSkillCheck:
                     if pred == 2 and self.hit_ante > 0:
                         sleep(self.hit_ante * 0.001)
 
-                    PressKey(SPACE)
-                    sleep(0.005)
-                    ReleaseKey(SPACE)
+                    # Humanized key press
+                    cooldown = self.humanizer.press(
+                        SPACE, PressKey, ReleaseKey, use_hesitation=self.use_hesitation
+                    )
 
                     with self.lock:
                         self.total_hits += 1
                         self.last_hit_desc = desc
 
-                    sleep(0.5)
+                    sleep(cooldown)
                     t0 = time()
                     nb_frames = 0
                     continue

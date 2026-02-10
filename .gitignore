@@ -15,3 +15,4 @@ venv/
 .venv/
 *.egg-info/
 config.json
+humanizer_fingerprint.json
