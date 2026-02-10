@@ -23,7 +23,7 @@ from rich.prompt import IntPrompt, Confirm
 from rich import box
 
 from dbd.AI_model import AI_model
-from dbd.utils.directkeys import PressKey, ReleaseKey, SPACE, ACTIVE_INPUT_MODE
+from dbd.utils.directkeys import PressKey, ReleaseKey, SPACE, SHIFT, ACTIVE_INPUT_MODE
 from dbd.utils.humanizer import Humanizer
 from dbd.utils.monitoring_mss import Monitoring_mss
 
@@ -139,9 +139,10 @@ def trigger_wayland_consent():
     def _send_dummy_input():
         try:
             # A short press/release cycle is enough to trigger the consent dialog
-            PressKey(SPACE)
-            sleep(0.01)
-            ReleaseKey(SPACE)
+            # Using SHIFT avoids typing unwanted characters in the TUI menu
+            PressKey(SHIFT)
+            sleep(0.05)
+            ReleaseKey(SHIFT)
         except Exception:
             pass
 

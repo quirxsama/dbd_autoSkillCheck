@@ -28,7 +28,9 @@ if sys.platform == "win32":
     UP = 0x26
     DOWN = 0x28
     A = 0x41
+    A = 0x41
     SPACE = 0x20
+    SHIFT = 0x10
 
     wintypes.ULONG_PTR = wintypes.WPARAM
 
@@ -94,12 +96,15 @@ else:
         pynput_available = True
         keyboard = Controller()
         SPACE = Key.space
+        SHIFT = Key.shift
         UP = Key.up
         DOWN = Key.down
         A = 'a'
     except ImportError:
         pynput_available = False
+        pynput_available = False
         SPACE = 'space' # safe fallback for constants
+        SHIFT = 'shift'
         UP = 'up'
         DOWN = 'down'
         A = 'a'
@@ -121,12 +126,16 @@ else:
             # Map pynput keys to our uinput strings/codes
             if key_code == SPACE or key_code == 'space':
                 uinput_dev.press('space')
+            elif key_code == SHIFT or key_code == 'shift':
+                uinput_dev.press('shift')
             else:
                 uinput_dev.press(key_code)
 
         def ReleaseKey(key_code):
             if key_code == SPACE or key_code == 'space':
                 uinput_dev.release('space')
+            elif key_code == SHIFT or key_code == 'shift':
+                uinput_dev.release('shift')
             else:
                 uinput_dev.release(key_code)
                 

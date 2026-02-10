@@ -99,8 +99,12 @@ class LinuxVirtualController:
         if self.uinput:
             # Map common internal key codes to linux ecodes if needed, 
             # but for now we assume key_code corresponds to evdev constants usually.
-            # Space mapping:
-            target = e.KEY_SPACE if key_code == 'space' else key_code
+            # Map common internal key codes
+            target = key_code
+            if key_code == 'space':
+                target = e.KEY_SPACE
+            elif key_code == 'shift':
+                target = e.KEY_LEFTSHIFT
             
             self.uinput.write(e.EV_KEY, target, 1) # 1 = Down
             self.uinput.syn()
@@ -108,7 +112,11 @@ class LinuxVirtualController:
     def release(self, key_code):
         """Send specific key UP event."""
         if self.uinput:
-            target = e.KEY_SPACE if key_code == 'space' else key_code
+            target = key_code
+            if key_code == 'space':
+                target = e.KEY_SPACE
+            elif key_code == 'shift':
+                target = e.KEY_LEFTSHIFT
             
             self.uinput.write(e.EV_KEY, target, 0) # 0 = Up
             self.uinput.syn()
