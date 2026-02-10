@@ -11,6 +11,8 @@ import json
 import signal
 import threading
 import argparse
+import logging
+from datetime import datetime
 from time import time, sleep
 from pathlib import Path
 from rich.console import Console
@@ -21,7 +23,7 @@ from rich.prompt import IntPrompt, Confirm
 from rich import box
 
 from dbd.AI_model import AI_model
-from dbd.utils.directkeys import PressKey, ReleaseKey, SPACE
+from dbd.utils.directkeys import PressKey, ReleaseKey, SPACE, ACTIVE_INPUT_MODE
 from dbd.utils.humanizer import Humanizer
 from dbd.utils.monitoring_mss import Monitoring_mss
 
@@ -43,7 +45,29 @@ except ImportError:
 console = Console()
 
 # Config file path (same directory as tui.py)
+# Config file path (same directory as tui.py)
 CONFIG_PATH = Path(__file__).parent / "config.json"
+LOG_DIR = Path(__file__).parent / "logs"
+
+def setup_logging():
+    """Configure logging to file."""
+    if not LOG_DIR.exists():
+        LOG_DIR.mkdir()
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_file = LOG_DIR / f"session_{timestamp}.log"
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s | %(levelname)s | %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(sys.stdout) # optional: checks args
+        ]
+    )
+    # Remove StreamHandler to avoid double printing in TUI
+    logging.getLogger().handlers = [logging.FileHandler(log_file)]
+    return log_file
 
 # FPS Presets: (label, ante-frontier delay in ms)
 FPS_PRESETS = [
@@ -536,6 +560,7 @@ class DBDAutoSkillCheck:
         summary.add_row("Capture Method", config["monitoring_type"])
         summary.add_row("Ante-frontier Delay", f"{config['hit_ante']}ms")
         summary.add_row("CPU Threads", str(config["cpu_threads"]))
+        summary.add_row("Input Mode", ACTIVE_INPUT_MODE)
         summary.add_row("Hesitation", "Active" if config.get("use_hesitation", True) else "Disabled")
         console.print(summary)
         console.print()
@@ -610,8 +635,14 @@ class DBDAutoSkillCheck:
         except Exception:
             pass
 
-    def run(self, skip_config=False):
+    def run(self, skip_config=False, enable_logging=False):
         """Main run function."""
+        if enable_logging:
+            log_file = setup_logging()
+            console.print(f"[dim]Logging enabled: {log_file}[/dim]")
+            logging.info(f"Session started. Platform: {self.platform_info['display']}")
+            logging.info(f"Input Mode: {ACTIVE_INPUT_MODE}")
+
         if skip_config:
             self.clear_screen()
             self.show_banner()
@@ -647,6 +678,7 @@ class DBDAutoSkillCheck:
             console.print(f"[dim]  Capture   : {self.monitoring_type}[/dim]")
             console.print(f"[dim]  Delay     : {self.hit_ante}ms[/dim]")
             console.print(f"[dim]  Threads   : {self.cpu_threads}[/dim]")
+            console.print(f"[dim]  Input Mode: {ACTIVE_INPUT_MODE}[/dim]")
             console.print(f"[dim]  Humanizer : {'Hesitation ON' if self.use_hesitation else 'Hesitation OFF'}[/dim]")
             console.print()
         else:
@@ -719,6 +751,9 @@ class DBDAutoSkillCheck:
                     cooldown = self.humanizer.press(
                         SPACE, PressKey, ReleaseKey, use_hesitation=self.use_hesitation
                     )
+                    
+                    if enable_logging:
+                        logging.info(f"HIT | Pred: {pred} | Desc: {desc} | Cooldown: {cooldown:.4f}s")
 
                     with self.lock:
                         self.total_hits += 1
@@ -768,6 +803,8 @@ def main():
                         help="Skip settings menu, start with saved defaults or platform defaults")
     parser.add_argument("-d", "--defaults", action="store_true",
                         help="Edit and save default settings to config.json")
+    parser.add_argument("-l", "--log", action="store_true",
+                        help="Enable logging to logs/ directory")
     args = parser.parse_args()
 
     app = DBDAutoSkillCheck()
@@ -780,7 +817,7 @@ def main():
         if args.defaults:
             app.edit_defaults()
         else:
-            app.run(skip_config=args.skip)
+            app.run(skip_config=args.skip, enable_logging=args.log)
     except Exception as e:
         console.print(f"[red]Unexpected error: {e}[/red]")
         import traceback

@@ -61,11 +61,11 @@ What's in the **beta V4 release** (only available in the discord server for now)
 
 # Platform Support
 
-| Platform            | Status          | Screen Capture Methods  | Input Method    |
-| ------------------- | --------------- | ----------------------- | --------------- |
-| **Windows**         | ✅ Full support | `mss`, `bettercam`      | Win32 SendInput |
-| **Linux (X11)**     | ✅ Full support | `mss`                   | pynput          |
-| **Linux (Wayland)** | ⚠️ Limited      | `v4l2 (OBS VirtualCam)` | pynput          |
+| Platform            | Status          | Screen Capture Methods  | Input Method                 |
+| ------------------- | --------------- | ----------------------- | ---------------------------- |
+| **Windows**         | ✅ Full support | `mss`, `bettercam`      | Win32 SendInput              |
+| **Linux (X11)**     | ✅ Full support | `mss`                   | Kernel (`evdev`) or `pynput` |
+| **Linux (Wayland)** | ⚠️ Limited      | `v4l2 (OBS VirtualCam)` | Kernel (`evdev`) or `pynput` |
 
 > **Wayland users**: Direct screen capture (`mss`) does not work on Wayland. You must use OBS Virtual Camera as a workaround. See the [Linux Setup Guide](#linux-setup-guide) for instructions.
 
@@ -228,6 +228,15 @@ Instead of mechanical, fixed delays, the Humanizer uses:
 
 > **Note:** "Human-like Hesitation" is enabled by default for maximum safety. It may rarely cause a "Good" skill check instead of "Great", but it significantly reduces the risk of detection. You can disable it in the Web UI or TUI if you prefer mechanical precision.
 
+### 🐧 Linux Kernel-Level Input (Maximum Safety)
+
+On Linux systems, this tool can use a **Polymorphic Kernel Driver** to inject key presses directly into the OS kernel.
+
+- **How it works:** Creates a virtual input device (`/dev/uinput`) that mimics real hardware (e.g., Logitech/Razer keyboards).
+- **Polymorphism:** On every launch, it randomly selects a different Vendor ID, Product ID, and Device Name to prevent device blacklisting.
+- **Safety:** To Anti-Cheat systems, inputs appear to come from a physical USB device, bypassing `LLKHF_INJECTED` flags used to detect software macros.
+- **Requirement:** User must have permissions to write to `/dev/uinput` (see Setup Guide below).
+
 # Linux Setup Guide
 
 ## X11 Users
@@ -292,8 +301,34 @@ python tui.py   # Select "v4l2 (OBS VirtualCam)" in settings
 ### Required packages for Linux
 
 ```bash
-pip install pynput    # For keyboard input simulation
+pip install pynput    # Standard input (fallback)
+pip install evdev     # Kernel-level input (Safe Mode)
 ```
+
+### Enabling Safe Mode (Kernel Input)
+
+To use the Kernel-Level Input (Safe Mode), your user needs permission to create virtual devices:
+
+1. **Add your user to the `input` group** (or creates a udev rule):
+
+   ```bash
+   sudo groupadd -f input
+   sudo usermod -aG input $USER
+   ```
+
+2. **Create a udev rule** to allow access to `/dev/uinput`:
+
+   ```bash
+   echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' | sudo tee /etc/udev/rules.d/99-input.rules
+   ```
+
+3. **Reload rules and reboot** (or re-login):
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   # You usually need to logout/login or reboot for group changes to take effect
+   ```
+
+If configured correctly, the TUI will show **`Input Mode: Linux Kernel (Safe)`**. If not, it will fallback to `User (Standard)`.
 
 # Project details
 

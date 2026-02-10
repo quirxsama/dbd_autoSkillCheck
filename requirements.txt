@@ -11,3 +11,4 @@ rich
 
 # Linux keyboard input (not needed on Windows)
 pynput
+evdev; sys_platform == 'linux'

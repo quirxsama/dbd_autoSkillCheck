@@ -85,25 +85,77 @@ if sys.platform == "win32":
         x = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(wVk=hexKeyCode, dwFlags=KEYEVENTF_KEYUP))
         user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
 
+    ACTIVE_INPUT_MODE = "Windows API (Standard)"
+
 else:
-    # Linux / macOS implementation using pynput
-    from pynput.keyboard import Key, Controller
+    # Linux / macOS implementation
+    try:
+        from pynput.keyboard import Key, Controller
+        pynput_available = True
+        keyboard = Controller()
+        SPACE = Key.space
+        UP = Key.up
+        DOWN = Key.down
+        A = 'a'
+    except ImportError:
+        pynput_available = False
+        SPACE = 'space' # safe fallback for constants
+        UP = 'up'
+        DOWN = 'down'
+        A = 'a'
 
-    keyboard = Controller()
+    # Try to initialize Kernel-Level Input (Linux only)
+    uinput_dev = None
+    if sys.platform == "linux":
+        try:
+            from dbd.utils.linux_uinput import get_controller
+            dev = get_controller()
+            if dev.is_active():
+                uinput_dev = dev
+        except ImportError:
+            pass
 
-    SPACE = Key.space
-    UP = Key.up
-    DOWN = Key.down
-    A = 'a'
+    if uinput_dev:
+        # 🟢 Kernel-Level Input Mode
+        def PressKey(key_code):
+            # Map pynput keys to our uinput strings/codes
+            if key_code == SPACE or key_code == 'space':
+                uinput_dev.press('space')
+            else:
+                uinput_dev.press(key_code)
 
-    def PressKey(key_code):
-        keyboard.press(key_code)
+        def ReleaseKey(key_code):
+            if key_code == SPACE or key_code == 'space':
+                uinput_dev.release('space')
+            else:
+                uinput_dev.release(key_code)
+                
+    elif pynput_available:
+        # 🟡 User-Level Input Mode (Fallback)
+        def PressKey(key_code):
+            keyboard.press(key_code)
 
-    def ReleaseKey(key_code):
-        keyboard.release(key_code)
+        def ReleaseKey(key_code):
+            keyboard.release(key_code)
+    else:
+        # 🔴 No input method available
+        def PressKey(key_code):
+            print(f"[Error] No keyboard input method available. Pressed: {key_code}")
+
+        def ReleaseKey(key_code):
+            pass
+
+    # Set active mode string
+    if uinput_dev:
+        ACTIVE_INPUT_MODE = "Linux Kernel (Safe)"
+    elif pynput_available:
+        ACTIVE_INPUT_MODE = "Linux User (Standard)"
+    else:
+        ACTIVE_INPUT_MODE = "None"
 
 if __name__ == "__main__":
     print(f"Testing input on {sys.platform}")
+    print(f"Mode: {ACTIVE_INPUT_MODE}")
     time.sleep(1)
     PressKey(SPACE)
     time.sleep(0.5)

@@ -237,7 +237,7 @@ if __name__ == "__main__":
             return None
 
     # --- Web UI ---
-    with (gr.Blocks(title="DBD Auto Skill Check", theme=gr.themes.Soft()) as webui):
+    with (gr.Blocks(title="DBD Auto Skill Check") as webui):
         gr.Markdown("# <center>🎮 DBD Auto Skill Check</center>", elem_id="title")
         gr.Markdown(
             f"<center>"
@@ -346,7 +346,7 @@ if __name__ == "__main__":
         monitor_id.blur(fn=switch_monitor_cb, inputs=[monitoring_str, monitor_id], outputs=image_visu)
 
     try:
-        webui.launch()
+        webui.launch(theme=gr.themes.Soft())
     except:
         print("User stopped the web UI. Please wait to cleanup resources...")
     finally:
