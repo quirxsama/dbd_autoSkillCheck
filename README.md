@@ -181,9 +181,9 @@ On the right of the web UI, we display :
 
 | Method                  | Platform             | Performance | Description                                                                                                                                                             |
 | ----------------------- | -------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mss`                   | Windows, Linux (X11) | ⭐⭐⭐      | Cross-platform screen capture. Works on Windows and Linux X11. **Does NOT work on Wayland.**                                                                            |
+| `mss`                   | Windows, Linux (X11) | ⭐⭐⭐⭐    | Cross-platform screen capture. Works on Windows and Linux X11. **Does NOT work on Wayland.**                                                                            |
 | `bettercam`             | Windows only         | ⭐⭐⭐⭐⭐  | High-performance Windows-only screen capture using DXGI Desktop Duplication. Recommended for Windows.                                                                   |
-| `v4l2 (OBS VirtualCam)` | Linux                | ⭐⭐⭐⭐    | Captures from OBS Virtual Camera. Works on both X11 and Wayland. Requires OBS Studio with Virtual Camera enabled. This is the **recommended method for Wayland users**. |
+| `v4l2 (OBS VirtualCam)` | Linux                | ⭐⭐⭐      | Captures from OBS Virtual Camera. Works on both X11 and Wayland. Requires OBS Studio with Virtual Camera enabled. This is the **recommended method for Wayland users**. |
 
 > **Note**: The Web UI auto-detects your platform and selects the best default method. You can always change it manually.
 
@@ -461,7 +461,7 @@ The project was made and is maintained by [Manuteaa](https://github.com/Manuteaa
 
 **Contributors:**
 
-- Linux support, Terminal UI, FPS Presets, and Wayland (OBS) support by [quirxkaan](https://github.com/quirxkaan)
+- Linux support, Terminal UI, FPS Presets, and Wayland (OBS) support by [quirxsama](https://github.com/quirxsama)
 
 Feel free to open a new issue for any question, suggestion or issue. You can also join the discord server https://discord.gg/3mewehHHpZ for more info and help.
 
