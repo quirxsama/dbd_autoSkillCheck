@@ -1,99 +1,111 @@
 # directkeys.py
-# http://stackoverflow.com/questions/13564851/generate-keyboard-events
-# msdn.microsoft.com/en-us/library/dd375731
+# Cross-platform keyboard input handler
+# Windows: Win32 SendInput API
+# Linux/macOS: pynput library
 
-import ctypes
-from ctypes import wintypes
+import sys
 import time
 
-user32 = ctypes.WinDLL('user32', use_last_error=True)
+# Cross-platform input handling
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
 
-INPUT_MOUSE    = 0
-INPUT_KEYBOARD = 1
-INPUT_HARDWARE = 2
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
 
-KEYEVENTF_EXTENDEDKEY = 0x0001
-KEYEVENTF_KEYUP       = 0x0002
-KEYEVENTF_UNICODE     = 0x0004
-KEYEVENTF_SCANCODE    = 0x0008
+    INPUT_MOUSE    = 0
+    INPUT_KEYBOARD = 1
+    INPUT_HARDWARE = 2
 
-MAPVK_VK_TO_VSC = 0
+    KEYEVENTF_EXTENDEDKEY = 0x0001
+    KEYEVENTF_KEYUP       = 0x0002
+    KEYEVENTF_UNICODE     = 0x0004
+    KEYEVENTF_SCANCODE    = 0x0008
 
-# List of all codes for keys:
-# # msdn.microsoft.com/en-us/library/dd375731
-UP = 0x26
-DOWN = 0x28
-A = 0x41
-SPACE = 0x20
+    MAPVK_VK_TO_VSC = 0
 
-# C struct definitions
+    # Key codes: msdn.microsoft.com/en-us/library/dd375731
+    UP = 0x26
+    DOWN = 0x28
+    A = 0x41
+    SPACE = 0x20
 
-wintypes.ULONG_PTR = wintypes.WPARAM
+    wintypes.ULONG_PTR = wintypes.WPARAM
 
-class MOUSEINPUT(ctypes.Structure):
-    _fields_ = (("dx",          wintypes.LONG),
-                ("dy",          wintypes.LONG),
-                ("mouseData",   wintypes.DWORD),
-                ("dwFlags",     wintypes.DWORD),
-                ("time",        wintypes.DWORD),
-                ("dwExtraInfo", wintypes.ULONG_PTR))
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = (("dx",          wintypes.LONG),
+                    ("dy",          wintypes.LONG),
+                    ("mouseData",   wintypes.DWORD),
+                    ("dwFlags",     wintypes.DWORD),
+                    ("time",        wintypes.DWORD),
+                    ("dwExtraInfo", wintypes.ULONG_PTR))
 
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = (("wVk",         wintypes.WORD),
-                ("wScan",       wintypes.WORD),
-                ("dwFlags",     wintypes.DWORD),
-                ("time",        wintypes.DWORD),
-                ("dwExtraInfo", wintypes.ULONG_PTR))
+    class KEYBDINPUT(ctypes.Structure):
+        _fields_ = (("wVk",         wintypes.WORD),
+                    ("wScan",       wintypes.WORD),
+                    ("dwFlags",     wintypes.DWORD),
+                    ("time",        wintypes.DWORD),
+                    ("dwExtraInfo", wintypes.ULONG_PTR))
 
-    def __init__(self, *args, **kwds):
-        super(KEYBDINPUT, self).__init__(*args, **kwds)
-        # some programs use the scan code even if KEYEVENTF_SCANCODE
-        # isn't set in dwFflags, so attempt to map the correct code.
-        if not self.dwFlags & KEYEVENTF_UNICODE:
-            self.wScan = user32.MapVirtualKeyExW(self.wVk,
-                                                 MAPVK_VK_TO_VSC, 0)
+        def __init__(self, *args, **kwds):
+            super(KEYBDINPUT, self).__init__(*args, **kwds)
+            if not self.dwFlags & KEYEVENTF_UNICODE:
+                self.wScan = user32.MapVirtualKeyExW(self.wVk,
+                                                     MAPVK_VK_TO_VSC, 0)
 
-class HARDWAREINPUT(ctypes.Structure):
-    _fields_ = (("uMsg",    wintypes.DWORD),
-                ("wParamL", wintypes.WORD),
-                ("wParamH", wintypes.WORD))
+    class HARDWAREINPUT(ctypes.Structure):
+        _fields_ = (("uMsg",    wintypes.DWORD),
+                    ("wParamL", wintypes.WORD),
+                    ("wParamH", wintypes.WORD))
 
-class INPUT(ctypes.Structure):
-    class _INPUT(ctypes.Union):
-        _fields_ = (("ki", KEYBDINPUT),
-                    ("mi", MOUSEINPUT),
-                    ("hi", HARDWAREINPUT))
-    _anonymous_ = ("_input",)
-    _fields_ = (("type",   wintypes.DWORD),
-                ("_input", _INPUT))
+    class INPUT(ctypes.Structure):
+        class _INPUT(ctypes.Union):
+            _fields_ = (("ki", KEYBDINPUT),
+                        ("mi", MOUSEINPUT),
+                        ("hi", HARDWAREINPUT))
+        _anonymous_ = ("_input",)
+        _fields_ = (("type",   wintypes.DWORD),
+                    ("_input", _INPUT))
 
-LPINPUT = ctypes.POINTER(INPUT)
+    LPINPUT = ctypes.POINTER(INPUT)
 
-def _check_count(result, func, args):
-    if result == 0:
-        raise ctypes.WinError(ctypes.get_last_error())
-    return args
+    def _check_count(result, func, args):
+        if result == 0:
+            raise ctypes.WinError(ctypes.get_last_error())
+        return args
 
-user32.SendInput.errcheck = _check_count
-user32.SendInput.argtypes = (wintypes.UINT, # nInputs
-                             LPINPUT,       # pInputs
-                             ctypes.c_int)  # cbSize
+    user32.SendInput.errcheck = _check_count
+    user32.SendInput.argtypes = (wintypes.UINT, LPINPUT, ctypes.c_int)
 
-# Functions
+    def PressKey(hexKeyCode):
+        x = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(wVk=hexKeyCode))
+        user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
 
-def PressKey(hexKeyCode):
-    x = INPUT(type=INPUT_KEYBOARD,
-              ki=KEYBDINPUT(wVk=hexKeyCode))
-    user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
+    def ReleaseKey(hexKeyCode):
+        x = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(wVk=hexKeyCode, dwFlags=KEYEVENTF_KEYUP))
+        user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
 
-def ReleaseKey(hexKeyCode):
-    x = INPUT(type=INPUT_KEYBOARD,
-              ki=KEYBDINPUT(wVk=hexKeyCode,
-                            dwFlags=KEYEVENTF_KEYUP))
-    user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
+else:
+    # Linux / macOS implementation using pynput
+    from pynput.keyboard import Key, Controller
+
+    keyboard = Controller()
+
+    SPACE = Key.space
+    UP = Key.up
+    DOWN = Key.down
+    A = 'a'
+
+    def PressKey(key_code):
+        keyboard.press(key_code)
+
+    def ReleaseKey(key_code):
+        keyboard.release(key_code)
 
 if __name__ == "__main__":
-    PressKey(A)
+    print(f"Testing input on {sys.platform}")
+    time.sleep(1)
+    PressKey(SPACE)
     time.sleep(0.5)
-    ReleaseKey(A)
-    print("Pressed")
+    ReleaseKey(SPACE)
+    print("Pressed Space")

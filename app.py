@@ -1,4 +1,5 @@
 import os
+import sys
 from time import time, sleep
 import gradio as gr
 
@@ -6,21 +7,75 @@ from dbd.AI_model import AI_model
 from dbd.utils.directkeys import PressKey, ReleaseKey, SPACE
 from dbd.utils.monitoring_mss import Monitoring_mss
 
+# Optional: BetterCam (Windows only)
 try:
     from dbd.utils.monitoring_bettercam import Monitoring_bettercam
     bettercam_ok = True
-    print("Info: Bettercam feature available.")
+    print("Info: BetterCam feature available (Windows).")
 except ImportError:
     bettercam_ok = False
 
+# Optional: v4l2loopback / OBS VirtualCam (Linux only)
+try:
+    from dbd.utils.monitoring_v4l2 import Monitoring_v4l2, V4L2_AVAILABLE
+    v4l2_ok = V4L2_AVAILABLE
+    if v4l2_ok:
+        print("Info: v4l2 (OBS VirtualCam) feature available (Linux).")
+except ImportError:
+    v4l2_ok = False
+    V4L2_AVAILABLE = False
+
+
+# Detect platform
+def get_platform_info():
+    """Detect the current platform and display environment."""
+    info = {"os": sys.platform, "display": "unknown"}
+    
+    if sys.platform == "win32":
+        info["display"] = "Windows"
+    elif sys.platform == "darwin":
+        info["display"] = "macOS"
+    else:
+        # Linux - check for Wayland or X11
+        session_type = os.environ.get('XDG_SESSION_TYPE', '')
+        wayland_display = os.environ.get('WAYLAND_DISPLAY', '')
+        
+        if session_type == 'wayland' or wayland_display:
+            info["display"] = "Wayland"
+        else:
+            info["display"] = "X11"
+    
+    return info
+
+platform_info = get_platform_info()
+print(f"Info: Platform detected: {platform_info['display']}")
+
 
 ai_model = None
+devices = ["CPU (default)", "GPU"]
+
 def cleanup():
     global ai_model
     if ai_model is not None:
         del ai_model
         ai_model = None
     return 0.
+
+
+# FPS Presets
+FPS_PRESETS = {
+    "Custom": None,
+    "60 FPS (locked)": -250,
+    "90 FPS (locked)": -125,
+    "120 FPS": 0,
+}
+
+
+def apply_fps_preset(preset_name):
+    """Apply ante-frontier delay based on FPS preset."""
+    if preset_name in FPS_PRESETS and FPS_PRESETS[preset_name] is not None:
+        return gr.update(value=FPS_PRESETS[preset_name])
+    return gr.skip()
 
 
 def monitor(ai_model_path, device, monitoring_str, monitor_id, hit_ante, nb_cpu_threads):
@@ -35,15 +90,18 @@ def monitor(ai_model_path, device, monitoring_str, monitor_id, hit_ante, nb_cpu_
 
     use_gpu = (device == devices[1])
 
-    if monitoring_str == "bettercam" and bettercam_ok:
+    if monitoring_str == "v4l2 (OBS VirtualCam)" and v4l2_ok:
+        monitoring = Monitoring_v4l2(device_id=monitor_id, crop_size=224)
+    elif monitoring_str == "bettercam" and bettercam_ok:
         monitoring = Monitoring_bettercam(monitor_id=monitor_id, crop_size=224, target_fps=240)
     else:
         monitoring = Monitoring_mss(monitor_id=monitor_id, crop_size=224)
 
     try:
         global ai_model
-        ai_model = AI_model(ai_model_path, use_gpu, nb_cpu_threads, monitoring)
-        execution_provider = ai_model.check_provider()
+        model_instance = AI_model(ai_model_path, use_gpu, nb_cpu_threads, monitoring)
+        ai_model = model_instance
+        execution_provider = model_instance.check_provider()
     except Exception as e:
         raise gr.Error("Error when loading AI model: {}".format(e), duration=0)
 
@@ -64,10 +122,13 @@ def monitor(ai_model_path, device, monitoring_str, monitor_id, hit_ante, nb_cpu_
 
     try:
         while True:
-            frame_np = ai_model.grab_screenshot()
+            if model_instance is None:
+                break
+                
+            frame_np = model_instance.grab_screenshot()
             nb_frames += 1
 
-            pred, desc, probs, should_hit = ai_model.predict(frame_np)
+            pred, desc, probs, should_hit = model_instance.predict(frame_np)
 
             if should_hit:
                 # ante-frontier hit delay
@@ -95,7 +156,7 @@ def monitor(ai_model_path, device, monitoring_str, monitor_id, hit_ante, nb_cpu_
                 nb_frames = 0
 
     except Exception as e:
-        # print(e)
+        print(f"Monitor loop error: {e}")
         pass
     finally:
         print("Monitoring stopped.")
@@ -105,7 +166,6 @@ if __name__ == "__main__":
     models_folder = "models"
 
     fps_info = "Number of frames per second the AI model analyses the monitored frame."
-    devices = ["CPU (default)", "GPU"]
     cpu_choices = [("Low", 2), ("Normal", 4), ("High", 6), ("CPU BBQ Mode", 8)]
 
     # Find available AI models
@@ -113,10 +173,38 @@ if __name__ == "__main__":
     if len(model_files) == 0:
         raise gr.Error(f"No AI model found in {models_folder}/", duration=0)
 
-    # Monitoring
-    monitoring_choices = ["mss", "bettercam"] if bettercam_ok else ["mss"]
+    # Build monitoring choices based on platform
+    monitoring_choices = ["mss"]
+    monitoring_tooltips = {
+        "mss": "Cross-platform screen capture. Works on Windows and Linux (X11). Does NOT work on Wayland.",
+        "bettercam": "Windows-only high-performance screen capture. Recommended for Windows users.",
+        "v4l2 (OBS VirtualCam)": "Linux screen capture via OBS Virtual Camera. Works on both X11 and Wayland. Requires OBS with 'Start Virtual Camera' enabled.",
+    }
+    
+    if bettercam_ok:
+        monitoring_choices.insert(0, "bettercam")
+    if v4l2_ok:
+        monitoring_choices.append("v4l2 (OBS VirtualCam)")
+
+    # Auto-select best default monitoring method
+    if platform_info["display"] == "Windows" and bettercam_ok:
+        default_monitoring = "bettercam"
+    elif platform_info["display"] == "Wayland" and v4l2_ok:
+        default_monitoring = "v4l2 (OBS VirtualCam)"
+    else:
+        default_monitoring = "mss"
+
+    # Build monitoring info text
+    monitoring_info_lines = []
+    for method in monitoring_choices:
+        tip = monitoring_tooltips.get(method, "")
+        monitoring_info_lines.append(f"• **{method}**: {tip}")
+    monitoring_info_text = "\n".join(monitoring_info_lines)
+
     def switch_monitoring_cb(monitoring_str):
-        if monitoring_str == "bettercam" and bettercam_ok:
+        if monitoring_str == "v4l2 (OBS VirtualCam)" and v4l2_ok:
+            monitor_choices = Monitoring_v4l2.get_monitors_info()
+        elif monitoring_str == "bettercam" and bettercam_ok:
             monitor_choices = Monitoring_bettercam.get_monitors_info()
         else:
             monitor_choices = Monitoring_mss.get_monitors_info()
@@ -124,45 +212,119 @@ if __name__ == "__main__":
         return gr.update(choices=monitor_choices, value=None), None
 
     # Monitor selection
-    monitor_choices = Monitoring_mss.get_monitors_info()
-    def switch_monitor_cb(monitoring_str, monitor_id):
-        if monitoring_str == "bettercam" and bettercam_ok:
-            with Monitoring_bettercam(monitor_id, crop_size=520) as mon:
-                return mon.get_frame_np()
-        else:
-            with Monitoring_mss(monitor_id, crop_size=520) as mon:
-                return mon.get_frame_np()
+    if default_monitoring == "v4l2 (OBS VirtualCam)" and v4l2_ok:
+        monitor_choices = Monitoring_v4l2.get_monitors_info()
+    elif default_monitoring == "bettercam" and bettercam_ok:
+        monitor_choices = Monitoring_bettercam.get_monitors_info()
+    else:
+        monitor_choices = Monitoring_mss.get_monitors_info()
 
-    with (gr.Blocks(title="Auto skill check") as webui):
-        gr.Markdown("<h1 style='text-align: center;'>DBD Auto skill check</h1>", elem_id="title")
-        gr.Markdown("https://github.com/Manuteaa/dbd_autoSkillCheck")
+    def switch_monitor_cb(monitoring_str, monitor_id):
+        try:
+            if monitoring_str == "v4l2 (OBS VirtualCam)" and v4l2_ok:
+                with Monitoring_v4l2(monitor_id, crop_size=520) as mon:
+                    return mon.get_frame_np()
+            elif monitoring_str == "bettercam" and bettercam_ok:
+                with Monitoring_bettercam(monitor_id, crop_size=520) as mon:
+                    return mon.get_frame_np()
+            else:
+                with Monitoring_mss(monitor_id, crop_size=520) as mon:
+                    return mon.get_frame_np()
+        except Exception as e:
+            print(f"Monitor preview error: {e}")
+            return None
+
+    # --- Web UI ---
+    with (gr.Blocks(title="DBD Auto Skill Check", theme=gr.themes.Soft()) as webui):
+        gr.Markdown("# <center>🎮 DBD Auto Skill Check</center>", elem_id="title")
+        gr.Markdown(
+            f"<center>"
+            f"[GitHub](https://github.com/Manuteaa/dbd_autoSkillCheck) • "
+            f"Platform: **{platform_info['display']}**"
+            f"</center>"
+        )
 
         with gr.Row():
             with gr.Column(variant="panel"):
+                # AI Settings
                 with gr.Column(variant="panel"):
-                    gr.Markdown("AI inference settings")
-                    ai_model_path = gr.Dropdown(choices=model_files, value=model_files[0][1], label="Name the AI model to use (ONNX or TensorRT Engine)")
-                    device = gr.Radio(choices=devices, value=devices[0], label="Device the AI model will use")
+                    gr.Markdown("### ⚙️ AI Inference Settings")
+                    ai_model_path = gr.Dropdown(
+                        choices=model_files,
+                        value=model_files[0][1],
+                        label="AI Model (ONNX or TensorRT Engine)",
+                        info="Select the trained AI model to use for skill check detection."
+                    )
+                    device = gr.Radio(
+                        choices=devices,
+                        value=devices[0],
+                        label="Device",
+                        info="CPU works for most users. GPU requires CUDA/DirectML setup (see README)."
+                    )
                     with gr.Row():
-                        monitoring_str = gr.Dropdown(choices=monitoring_choices, value=monitoring_choices[0], label="Screen monitoring library")
-                        monitor_id = gr.Dropdown(choices=monitor_choices, value=monitor_choices[0][1], label="Monitor to use")
+                        monitoring_str = gr.Dropdown(
+                            choices=monitoring_choices,
+                            value=default_monitoring,
+                            label="Screen Capture Method",
+                            info=f"Auto-detected: {default_monitoring}. Hover for details."
+                        )
+                        monitor_id = gr.Dropdown(
+                            choices=monitor_choices,
+                            value=monitor_choices[0][1] if monitor_choices else 0,
+                            label="Monitor / Source",
+                            info="Select the monitor or capture source where you play the game."
+                        )
+                    
+                    # Show monitoring method descriptions
+                    with gr.Accordion("📖 Screen Capture Methods Info", open=False):
+                        gr.Markdown(monitoring_info_text)
+                        if platform_info["display"] == "Wayland":
+                            gr.Markdown(
+                                "> ⚠️ **Wayland detected:** Use `v4l2 (OBS VirtualCam)` for best results. "
+                                "`mss` does **not** work on Wayland. "
+                                "Open OBS, add your game window, then click **Start Virtual Camera**."
+                            )
+
+                # Feature Options
                 with gr.Column(variant="panel"):
-                    gr.Markdown("AI Features options")
-                    hit_ante = gr.Slider(minimum=0, maximum=50, step=5, value=20, label="Ante-frontier hit delay in ms")
+                    gr.Markdown("### 🎯 Feature Options")
+                    
+                    fps_preset = gr.Radio(
+                        choices=list(FPS_PRESETS.keys()),
+                        value="Custom",
+                        label="FPS Preset",
+                        info="Quick presets for ante-frontier delay based on your game FPS. "
+                             "60 FPS → -250ms, 90 FPS → -125ms, 120+ FPS → 0ms."
+                    )
+                    
+                    hit_ante = gr.Slider(
+                        minimum=-300, maximum=50, step=5, value=0,
+                        label="Ante-frontier hit delay (ms)",
+                        info="Negative = hit earlier (compensate for input lag at lower FPS). "
+                             "Positive = hit later. Adjust based on your game FPS and ping."
+                    )
+                    
                     cpu_stress = gr.Radio(
-                        label="CPU workload for AI model inference (increase to improve AI model FPS or decrease to reduce CPU stress)",
+                        label="CPU Workload",
                         choices=cpu_choices,
                         value=cpu_choices[1][1],
+                        info="Increase to improve AI FPS, decrease to reduce CPU usage. "
+                             "Adjust based on your hardware."
                     )
+
+                # Controls
                 with gr.Column():
-                    run_button = gr.Button("RUN", variant="primary")
-                    stop_button = gr.Button("STOP", variant="stop")
+                    run_button = gr.Button("▶ RUN", variant="primary", size="lg")
+                    stop_button = gr.Button("⏹ STOP", variant="stop", size="lg")
 
+            # Right panel - Output
             with gr.Column(variant="panel"):
-                fps = gr.Number(label="AI model FPS", info=fps_info, interactive=False)
+                gr.Markdown("### 📊 Live Monitoring")
+                fps = gr.Number(label="AI Model FPS", info=fps_info, interactive=False)
                 image_visu = gr.Image(label="Last hit skill check frame", height=224, interactive=False)
-                probs = gr.Label(label="Skill check AI recognition")
+                probs = gr.Label(label="Skill Check AI Recognition")
 
+        # Event handlers
         monitoring = run_button.click(
             fn=monitor, 
             inputs=[ai_model_path, device, monitoring_str, monitor_id, hit_ante, cpu_stress],
@@ -170,8 +332,9 @@ if __name__ == "__main__":
         )
 
         stop_button.click(fn=cleanup, inputs=None, outputs=fps)
-        monitoring_str.blur(fn=switch_monitoring_cb, inputs=[monitoring_str], outputs=[monitor_id, image_visu])  # triggered when selection is closed
-        monitor_id.blur(fn=switch_monitor_cb, inputs=[monitoring_str, monitor_id], outputs=image_visu)  # triggered when selection is closed
+        fps_preset.change(fn=apply_fps_preset, inputs=[fps_preset], outputs=[hit_ante])
+        monitoring_str.blur(fn=switch_monitoring_cb, inputs=[monitoring_str], outputs=[monitor_id, image_visu])
+        monitor_id.blur(fn=switch_monitor_cb, inputs=[monitoring_str, monitor_id], outputs=image_visu)
 
     try:
         webui.launch()

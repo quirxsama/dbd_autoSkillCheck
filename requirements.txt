@@ -1,0 +1,13 @@
+# Core dependencies
+numpy
+opencv-python
+onnxruntime
+Pillow
+mss
+gradio
+
+# Terminal UI
+rich
+
+# Linux keyboard input (not needed on Windows)
+pynput
